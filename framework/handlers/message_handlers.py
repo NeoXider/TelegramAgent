@@ -48,9 +48,7 @@ class MessageHandlers:
                 return await self._handle_command(message)
             else:
                 # Обрабатываем обычное сообщение через MessageAgent
-                response = await self.agents['message'].process_message(json.dumps({"text": text}), message.from_user.id, message.chat.id)
-                if isinstance(response, str):
-                    response = json.loads(response)
+                response = await self.agents['message'].process_message(text, message.from_user.id, message.chat.id)
                 await message.answer(response["text"])
                 return response
                 
@@ -70,9 +68,7 @@ class MessageHandlers:
             self.logger.info(f"Получено фото: {file_id}")
             
             # Обрабатываем фото через ImageAgent
-            response = await self.agents['image'].process_image(json.dumps({"file_id": file_id}), message.from_user.id, message.chat.id)
-            if isinstance(response, str):
-                response = json.loads(response)
+            response = await self.agents['image'].process_image(file_id, message.from_user.id, message.chat.id)
             await message.answer(response["text"])
             return response
             
@@ -92,9 +88,7 @@ class MessageHandlers:
             self.logger.info(f"Получен документ: {document.file_name} ({file_id})")
             
             # Обрабатываем документ через DocumentAgent
-            response = await self.agents['document'].process_document(json.dumps({"file_id": file_id}), message.from_user.id, message.chat.id)
-            if isinstance(response, str):
-                response = json.loads(response)
+            response = await self.agents['document'].process_document(file_id, message.from_user.id, message.chat.id)
             await message.answer(response["text"])
             return response
             

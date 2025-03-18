@@ -11,34 +11,32 @@ class ImageAgent(BaseAgent):
         super().__init__(config)
         self.logger = logging.getLogger(__name__)
     
-    async def process_image(self, image_path: str, user_id: int, chat_id: int) -> Dict[str, Any]:
-        """Обрабатывает изображение"""
+    def _is_image_valid(self, file_id: str) -> bool:
+        """Проверка валидности изображения"""
+        # TODO: Реализовать проверку
+        return True
+        
+    async def process_image(self, file_id: str, chat_id: int, message_id: int) -> dict:
+        """Обработка изображения"""
         try:
-            # Анализируем изображение
-            try:
-                analysis_data = await self.analyze_image(image_path)
-            except Exception as e:
-                self.logger.error(f"Ошибка при обработке изображения: {str(e)}")
+            # Проверяем изображение
+            if not self._is_image_valid(file_id):
                 return {
                     "action": "send_message",
-                    "text": "Произошла ошибка при обработке изображения"
-                }
-            
-            if not analysis_data or analysis_data.get("action") == "send_message" and "Произошла ошибка" in analysis_data.get("text", ""):
-                return {
-                    "action": "send_message",
-                    "text": "Произошла ошибка при обработке изображения"
-                }
-            
-            # Проверяем, нужна ли дополнительная информация
-            if analysis_data.get("needs_additional_info"):
-                return {
-                    "action": "request_info",
-                    "text": analysis_data["additional_info"]
+                    "text": "Неподдерживаемый формат изображения"
                 }
                 
-            # Возвращаем результат анализа
-            return analysis_data
+            # Анализируем изображение
+            analysis = await self.analyze_image(file_id, chat_id, message_id)
+            
+            # Если нужна дополнительная информация
+            if analysis.get("needs_additional_info"):
+                return {
+                    "action": "request_info",
+                    "text": analysis.get("additional_info", "Нужна дополнительная информация")
+                }
+                
+            return analysis
             
         except Exception as e:
             self.logger.error(f"Ошибка при обработке изображения: {str(e)}")

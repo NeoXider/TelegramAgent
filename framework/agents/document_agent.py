@@ -11,38 +11,68 @@ class DocumentAgent(BaseAgent):
         super().__init__(config)
         self.logger = logging.getLogger(__name__)
     
-    async def process_document(self, file_path: str, user_id: int, chat_id: int) -> Dict[str, Any]:
-        """Обрабатывает документ"""
+    def _is_document_valid(self, file_id: str) -> bool:
+        """Проверка валидности документа"""
+        # TODO: Реализовать проверку
+        return True
+        
+    async def process_document(self, file_id: str, chat_id: int, message_id: int) -> dict:
+        """Обработка документа"""
         try:
-            # Анализируем документ
-            try:
-                analysis_data = await self.think(f"Проанализируй документ по пути {file_path}")
-            except Exception as e:
-                self.logger.error(f"Ошибка при обработке документа: {str(e)}")
+            # Проверяем документ
+            if not self._is_document_valid(file_id):
                 return {
                     "action": "send_message",
-                    "text": "Произошла ошибка при обработке документа"
-                }
-            
-            if not analysis_data or analysis_data.get("action") == "send_message" and "Произошла ошибка" in analysis_data.get("text", ""):
-                return {
-                    "action": "send_message",
-                    "text": "Произошла ошибка при обработке документа"
-                }
-            
-            # Проверяем, нужна ли дополнительная информация
-            if analysis_data.get("needs_additional_info"):
-                return {
-                    "action": "request_info",
-                    "text": analysis_data["additional_info"]
+                    "text": "Неподдерживаемый формат документа"
                 }
                 
-            # Возвращаем результат анализа
-            return analysis_data
+            # Анализируем документ
+            analysis = await self.analyze_document(file_id, chat_id, message_id)
+            
+            # Если нужна дополнительная информация
+            if analysis.get("needs_additional_info"):
+                return {
+                    "action": "request_info",
+                    "text": analysis.get("additional_info", "Нужна дополнительная информация")
+                }
+                
+            return analysis
             
         except Exception as e:
             self.logger.error(f"Ошибка при обработке документа: {str(e)}")
             return {
                 "action": "send_message",
                 "text": "Произошла ошибка при обработке документа"
-            } 
+            }
+            
+    async def analyze_document(self, file_id: str, chat_id: int, message_id: int) -> dict:
+        """Анализ документа"""
+        try:
+            prompt = self._create_document_analysis_prompt(file_id)
+            response = await self.ollama_client.generate(prompt)
+            if not response:
+                return {
+                    "action": "send_message",
+                    "text": "Не удалось проанализировать документ"
+                }
+            return {
+                "action": "send_message",
+                "text": response
+            }
+        except Exception as e:
+            self.logger.error(f"Ошибка при анализе документа: {str(e)}")
+            return {
+                "action": "send_message",
+                "text": "Произошла ошибка при анализе документа"
+            }
+            
+    def _create_document_analysis_prompt(self, file_id: str) -> str:
+        """Создает промпт для анализа документа"""
+        return (
+            "<start_of_turn>user\n"
+            "Ты - ассистент в Telegram боте. Проанализируй документ и опиши его содержимое. "
+            "Ответ должен быть кратким и по существу. "
+            f"\nДокумент: {file_id}\n"
+            "<end_of_turn>\n"
+            "<start_of_turn>assistant\n"
+        ) 

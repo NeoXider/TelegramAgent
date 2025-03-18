@@ -57,7 +57,7 @@ class OllamaClient:
                     logger.error(f"Ошибка при загрузке модели {model_name}: {str(e)}")
                     raise
                     
-    async def generate_stream(self, prompt: str, model_name: str = "llama2") -> AsyncGenerator[str, None]:
+    async def generate_stream(self, prompt: str, model_name: str = "gemma3:12b") -> AsyncGenerator[str, None]:
         """Генерирует ответ в потоковом режиме"""
         try:
             # Убеждаемся, что модель загружена
@@ -104,7 +104,7 @@ class OllamaClient:
             logger.error(f"Аргументы ошибки: {e.args}")
             yield f"Произошла ошибка при генерации ответа: {str(e)}"
             
-    async def generate(self, prompt: str, model_name: str = "llama2") -> str:
+    async def generate(self, prompt: str, model_name: str = "gemma3:12b") -> str:
         """Генерирует полный ответ"""
         try:
             # Убеждаемся, что модель загружена

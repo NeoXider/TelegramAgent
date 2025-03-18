@@ -3,80 +3,44 @@ import logging
 from typing import Dict, Any, Optional
 from framework.agents.base import BaseAgent
 
-logger = logging.getLogger(__name__)
-
 class MessageAgent(BaseAgent):
-    """Агент для обработки сообщений"""
+    """Агент для обработки текстовых сообщений"""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.bot_name = config["bot"]["name"]
         self.bot_username = config["bot"]["username"]
+        self.logger = logging.getLogger(__name__)
         
-    async def process_message(self, message: str, user_id: int, chat_id: int) -> Dict[str, Any]:
-        """Обработка сообщения от пользователя"""
+    async def process_message(self, message: str, chat_id: int, message_id: int) -> dict:
+        """Обработка текстового сообщения"""
         try:
-            # Парсим входящее сообщение как JSON
-            if isinstance(message, str):
-                message_data = json.loads(message)
-                message_text = message_data.get("text", "")
-            else:
-                message_text = message
-            
             # Анализируем сообщение
-            analysis = await self.think(message_text)
+            analysis = await self.think(message, chat_id, message_id)
             
-            # Определяем действие
-            action = analysis.get("action")
-            
-            if action == "answer":
-                response = await self.get_response(message_text)
-                return {
-                    "action": "send_message",
-                    "text": response.get("text", "Не удалось сгенерировать ответ")
-                }
-                
-            elif action == "analyze_image":
+            # Если нужно изображение
+            if analysis.get("needs_image"):
                 return {
                     "action": "request_image",
-                    "text": "Пожалуйста, отправьте изображение для анализа."
+                    "text": "Пожалуйста, отправьте изображение для анализа"
                 }
                 
-            elif action == "analyze_file":
+            # Если нужна дополнительная информация
+            if analysis.get("needs_additional_info"):
                 return {
-                    "action": "request_file",
-                    "text": "Пожалуйста, отправьте файл для анализа."
+                    "action": "request_info",
+                    "text": analysis.get("additional_info", "Нужна дополнительная информация")
                 }
                 
-            elif action == "web_search":
-                return {
-                    "action": "web_search",
-                    "query": message_text
-                }
-                
-            elif action == "ask_info":
-                return {
-                    "action": "send_message",
-                    "text": analysis.get("additional_info", "Пожалуйста, уточните детали.")
-                }
-                
-            elif action == "error":
-                return {
-                    "action": "send_message",
-                    "text": f"Произошла ошибка: {analysis.get('error', 'Неизвестная ошибка')}"
-                }
-                
-            else:
-                return {
-                    "action": "send_message",
-                    "text": "Извините, я не смог определить, как обработать ваш запрос."
-                }
-                
+            # Генерируем ответ
+            response = await self.get_response(message, chat_id, message_id)
+            return response
+            
         except Exception as e:
-            logger.error(f"Ошибка при обработке сообщения: {str(e)}")
+            self.logger.error(f"Ошибка при обработке сообщения: {str(e)}")
             return {
                 "action": "send_message",
-                "text": f"Произошла ошибка при обработке сообщения: {str(e)}"
+                "text": "Произошла ошибка при обработке сообщения"
             }
             
     def is_bot_mentioned(self, message: str) -> bool:
