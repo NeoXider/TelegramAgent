@@ -1,0 +1,78 @@
+{
+    "bot": {
+        "name": "TelegramAgent",
+        "description": "A versatile Telegram bot for processing messages, images and documents",
+        "username": "assistant_bot",
+        "token": "",
+        "admin_ids": [],
+        "allowed_groups": [],
+        "default_language": "ru",
+        "command_prefix": "/"
+    },
+    "models": {
+        "default": "gemma3:12b",
+        "available": {
+            "gemma3:12b": {
+                "name": "gemma3:12b",
+                "description": "Gemma 12B",
+                "context_length": 8192,
+                "temperature": 0.7
+            },
+            "llama2": {
+                "name": "llama2",
+                "description": "Llama 2 7B",
+                "context_length": 4096,
+                "temperature": 0.7
+            },
+            "mistral": {
+                "name": "mistral",
+                "description": "Mistral 7B",
+                "context_length": 8192,
+                "temperature": 0.7
+            }
+        }
+    },
+    "features": {
+        "web_search": {
+            "enabled": true,
+            "max_results": 5,
+            "timeout": 30
+        },
+        "image_analysis": {
+            "enabled": true,
+            "max_size": 5242880,
+            "supported_formats": ["jpg", "jpeg", "png"]
+        },
+        "file_analysis": {
+            "enabled": true,
+            "max_size": 10485760,
+            "supported_formats": ["txt", "pdf", "doc", "docx"]
+        }
+    },
+    "memory": {
+        "type": "conversation",
+        "max_messages": 10,
+        "ttl": 3600
+    },
+    "logging": {
+        "level": "INFO",
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "file": "logs/bot.log",
+        "max_size": 10485760,
+        "backup_count": 5
+    },
+    "agents": {
+        "document": {
+            "allowed_types": ["pdf", "txt", "doc", "docx"],
+            "max_size_mb": 10
+        },
+        "image": {
+            "allowed_types": ["jpg", "jpeg", "png"],
+            "max_size_mb": 5
+        },
+        "web": {
+            "search_timeout": 30,
+            "browser_timeout": 60
+        }
+    }
+} 

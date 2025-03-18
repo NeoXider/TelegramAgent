@@ -1,0 +1,64 @@
+{
+  "models": {
+    "gemma3:12b": 1742314038.8457675,
+    "gemma3:latest": 1742318968.6338253
+  },
+  "vision_support": {
+    "gemma3:12b": {
+      "supported": true,
+      "timestamp": 1742312661.2129195
+    },
+    "gemma3:27b": {
+      "supported": false,
+      "timestamp": 1742314493.0748625
+    },
+    "qwq:latest": {
+      "supported": false,
+      "timestamp": 1742314615.223405
+    },
+    "phi4:latest": {
+      "supported": true,
+      "timestamp": 1742314737.0686324
+    },
+    "aratan/DeepSeek-R1-32B-Uncensored:latest": {
+      "supported": true,
+      "timestamp": 1742314774.3102682
+    },
+    "goekdenizguelmez/JOSIEFIED-Qwen2.5:latest": {
+      "supported": true,
+      "timestamp": 1742314888.0550144
+    },
+    "deepseek-r1:8b": {
+      "supported": true,
+      "timestamp": 1742314900.484862
+    },
+    "qwen2.5-coder:1.5b-base": {
+      "supported": true,
+      "timestamp": 1742314920.7713382
+    },
+    "nomic-embed-text:latest": {
+      "supported": false,
+      "timestamp": 1742314925.5843525
+    },
+    "qwen2.5-coder:32b-base-q2_K": {
+      "supported": true,
+      "timestamp": 1742314925.8164203
+    },
+    "deepseek-r1:14b": {
+      "supported": true,
+      "timestamp": 1742314962.8830326
+    },
+    "llama3.2-vision:latest": {
+      "supported": true,
+      "timestamp": 1742315007.865743
+    },
+    "qwen2.5-coder:3b": {
+      "supported": true,
+      "timestamp": 1742315035.191199
+    },
+    "gemma3:latest": {
+      "supported": true,
+      "timestamp": 1742318116.6947653
+    }
+  }
+}
