@@ -2,19 +2,19 @@ from aiogram.types import Message
 from framework.models.image_generation.stable_diffusion import StableDiffusionHandler
 import logging
 import asyncio
+import os
 
 logger = logging.getLogger(__name__)
 
 class ImageGenerationAgent:
-    def __init__(self, bot, model_id: str = "D:\\SD3\\Data\\Models\\StableDiffusion\\waiNSFWIllustrious_v110.safetensors"):
+    def __init__(self, bot):
         """Initialize the image generation agent.
         
         Args:
             bot: The Telegram bot instance
-            model_id (str): Путь к локальной модели или ID модели с Hugging Face
         """
         self.bot = bot
-        self.sd_handler = StableDiffusionHandler(model_id)
+        self.sd_handler = StableDiffusionHandler()
         
     async def handle_generate_command(self, message: Message):
         """Handle the /generate command.
@@ -38,17 +38,26 @@ class ImageGenerationAgent:
             
             try:
                 # Generate the image in a separate thread to avoid blocking
-                image_bytes = await asyncio.get_event_loop().run_in_executor(
+                image_path = await asyncio.get_event_loop().run_in_executor(
                     None,
                     self.sd_handler.generate_image,
                     prompt
                 )
                 
-                # Send the generated image
-                await message.answer_photo(
-                    photo=image_bytes,
-                    caption=f"🎨 Сгенерировано по запросу: {prompt}"
-                )
+                if image_path and os.path.exists(image_path):
+                    # Send the generated image using FSInputFile
+                    from aiogram.types import FSInputFile
+                    await message.answer_photo(
+                        photo=FSInputFile(image_path),
+                        caption=f"🎨 Сгенерировано по запросу: {prompt}"
+                    )
+                    # Clean up the file after sending
+                    try:
+                        os.remove(image_path)
+                    except Exception as e:
+                        logger.error(f"Error removing temporary file: {str(e)}")
+                else:
+                    raise Exception("Failed to generate image")
                 
             except Exception as e:
                 logger.error(f"Error generating image: {str(e)}")

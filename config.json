@@ -1,0 +1,37 @@
+{
+    "bot": {
+        "token": "",
+        "name": "Слайм",
+        "personality": {
+            "greeting_phrases": ["Привет!", "Здравствуйте!", "Добрый день!"],
+            "error_phrases": ["Произошла ошибка", "Что-то пошло не так"],
+            "capabilities": [
+                "Обработка сообщений",
+                "Анализ изображений",
+                "Работа с документами",
+                "Генерация изображений"
+            ],
+            "self_description": "Я бот-ассистент с возможностью генерации изображений",
+            "about_creator": ["Меня создала команда разработчиков"]
+        },
+        "creator": {
+            "name": "Команда разработчиков"
+        }
+    },
+    "models": {
+        "default": "gemma3:latest",
+        "think": "gemma3:12b"
+    },
+    "image_generation": {
+        "model_path": "D:\\SD3\\Data\\Models\\StableDiffusion\\waiNSFWIllustrious_v110.safetensors",
+        "default_width": 512,
+        "default_height": 512,
+        "num_inference_steps": 30,
+        "guidance_scale": 7.5
+    },
+    "logging": {
+        "level": "INFO",
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "file": "bot.log"
+    }
+} 

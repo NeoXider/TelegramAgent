@@ -1,0 +1,7 @@
+image_generation:
+  model_path: "runwayml/stable-diffusion-v1-5"
+  device: "cuda"
+  width: 512
+  height: 512
+  num_inference_steps: 30
+  guidance_scale: 7.5 

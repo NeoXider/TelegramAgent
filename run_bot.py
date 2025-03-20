@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from aiogram.enums import ParseMode
 from framework.agents.coordinator import AgentCoordinator
@@ -24,16 +24,10 @@ config = load_config()
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 dp = Dispatcher()
 
-# Инициализируем координатор агентов и агент генерации изображений
+# Инициализируем координатор агентов
 coordinator = AgentCoordinator(config, bot)
-image_agent = ImageGenerationAgent(bot, model_id="D:\\SD3\\Data\\Models\\StableDiffusion\\waiNSFWIllustrious_v110.safetensors")
 
-# Регистрируем обработчик команды generate
-@dp.message(Command("generate"))
-async def cmd_generate(message: Message):
-    """Обработчик команды /generate для генерации изображений"""
-    await image_agent.handle_generate_command(message)
-
+# Регистрируем обработчики команд
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     """Обработчик команды /start"""
@@ -44,7 +38,8 @@ async def cmd_start(message: Message):
         "/help - Показать все команды\n"
         "/models - Показать доступные модели\n"
         "/setmodel <название> - Установить модель\n"
-        "/current - Показать текущую модель"
+        "/current - Показать текущую модель\n"
+        "/generate <описание> - Сгенерировать изображение по описанию"
     )
 
 @dp.message(Command("help"))
@@ -59,6 +54,30 @@ async def cmd_help(message: Message):
         "/current - Показать текущую модель\n"
         "/generate <описание> - Сгенерировать изображение по описанию"
     )
+
+@dp.message(Command("generate"))
+async def handle_generate(message: Message):
+    """Handle the /generate command."""
+    try:
+        # Получаем промпт из сообщения
+        prompt = message.text.replace("/generate", "").strip()
+        
+        if not prompt:
+            await message.answer(
+                "Пожалуйста, укажите описание изображения после команды /generate\n"
+                "Например: /generate красивый закат над горами"
+            )
+            return
+        
+        # Генерируем изображение через координатор
+        await coordinator.generate_image(
+            message=message,
+            prompt=prompt
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in handle_generate: {str(e)}")
+        await message.answer("Произошла ошибка при обработке команды. Попробуйте позже.")
 
 @dp.message(Command("models"))
 async def cmd_models(message: Message):
@@ -96,10 +115,17 @@ async def cmd_models(message: Message):
         )
 
 @dp.message(Command("setmodel"))
-async def cmd_setmodel(message: Message):
+async def cmd_setmodel(message: Message, command: CommandObject):
     """Обработчик команды /setmodel"""
     try:
-        model_name = message.text.split()[1]
+        if not command.args:
+            await message.answer(
+                "❌ Пожалуйста, укажите название модели.\n"
+                "Пример: /setmodel gemma3:12b"
+            )
+            return
+            
+        model_name = command.args.strip()
         
         # Получаем список доступных моделей
         models = await coordinator.ollama_client.list_models()
@@ -120,11 +146,6 @@ async def cmd_setmodel(message: Message):
 
         await message.answer(f"✅ Модель успешно изменена на {model_name}!")
         
-    except IndexError:
-        await message.answer(
-            "❌ Пожалуйста, укажите название модели.\n"
-            "Пример: /setmodel gemma3:12b"
-        )
     except Exception as e:
         logger.error(f"Ошибка при смене модели: {str(e)}")
         await message.answer(
@@ -218,32 +239,49 @@ async def handle_document(message: Message):
             "Попробуй еще раз! 📄"
         )
 
-@dp.message(F.text & ~Command("start", "help", "models", "setmodel", "current", "generate"))
+@dp.message()
 async def handle_text(message: Message):
     """Обработчик текстовых сообщений"""
     try:
-        # Обрабатываем сообщение через координатор
-        result = await coordinator.process_message(
-            message=message.text,
-            user_id=message.from_user.id,
-            message_id=message.message_id
-        )
-        
-        # Отправляем ответ
-        if result["action"] == "send_message":
+        # Проверяем, не является ли сообщение командой
+        if message.text.startswith('/'):
+            return
+            
+        text = message.text.lower()
+        # Проверяем наличие ключевых слов для генерации изображения
+        if any(keyword in text for keyword in ['нарисуй', 'сгенерируй', 'создай']):
+            # Извлекаем промпт после ключевого слова
+            prompt = message.text
+            for keyword in ['нарисуй', 'сгенерируй', 'создай']:
+                if keyword in text:
+                    prompt = message.text[message.text.lower().find(keyword) + len(keyword):].strip()
+                    break
+            
+            if not prompt:
+                await message.answer("Пожалуйста, добавьте описание того, что нужно нарисовать. Например: нарисуй красивый закат над горами")
+                return
+                
+            await coordinator.generate_image(message, prompt)
+            return
+            
+        # Если это не запрос на генерацию изображения, обрабатываем как обычное сообщение
+        result = await coordinator.process_message(message.text, message.from_user.id, message.message_id)
+        if result.get("action") == "send_message":
             await message.answer(result["text"])
             
     except Exception as e:
-        logger.error(f"Ошибка при обработке сообщения: {str(e)}", exc_info=True)
-        await message.answer(
-            "Ой-ой! 😢 Что-то пошло не так при обработке сообщения. "
-            "Попробуй еще раз! 🌟"
-        )
+        logger.error(f"Error in handle_text: {str(e)}")
+        await message.answer("Произошла ошибка при обработке сообщения. Попробуйте позже.")
 
 async def main():
     """Основная функция запуска бота"""
     try:
         logger.info("Запуск бота...")
+        
+        # Загружаем модель генерации изображений при запуске
+        logger.info("Загрузка модели генерации изображений...")
+        await coordinator.image_generator.load_model()
+        logger.info("Модель генерации изображений загружена")
         
         # Запускаем бота
         await dp.start_polling(bot)
@@ -252,7 +290,7 @@ async def main():
         logger.error(f"Ошибка при запуске бота: {str(e)}", exc_info=True)
         raise
     finally:
-        cleanup()
+        await bot.session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
