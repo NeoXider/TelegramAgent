@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from aiogram.enums import ParseMode
 from framework.agents.coordinator import AgentCoordinator
+from framework.agents.image_generation_agent import ImageGenerationAgent
 from framework.utils.logger import setup_logger
 from framework.utils.config import load_config
 import os
@@ -23,8 +24,15 @@ config = load_config()
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 dp = Dispatcher()
 
-# Инициализируем координатор агентов
+# Инициализируем координатор агентов и агент генерации изображений
 coordinator = AgentCoordinator(config, bot)
+image_agent = ImageGenerationAgent(bot, model_id="D:\\SD3\\Data\\Models\\StableDiffusion\\waiNSFWIllustrious_v110.safetensors")
+
+# Регистрируем обработчик команды generate
+@dp.message(Command("generate"))
+async def cmd_generate(message: Message):
+    """Обработчик команды /generate для генерации изображений"""
+    await image_agent.handle_generate_command(message)
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -48,12 +56,8 @@ async def cmd_help(message: Message):
         "/help - Показать это сообщение\n"
         "/models - Показать доступные модели\n"
         "/setmodel <название> - Установить модель\n"
-        "/current - Показать текущую модель\n\n"
-        "📝 Что я умею:\n"
-        "- Анализировать изображения\n"
-        "- Отвечать на вопросы\n"
-        "- Поддерживать беседу\n"
-        "- Искать информацию"
+        "/current - Показать текущую модель\n"
+        "/generate <описание> - Сгенерировать изображение по описанию"
     )
 
 @dp.message(Command("models"))
@@ -214,7 +218,7 @@ async def handle_document(message: Message):
             "Попробуй еще раз! 📄"
         )
 
-@dp.message(F.text)
+@dp.message(F.text & ~Command("start", "help", "models", "setmodel", "current", "generate"))
 async def handle_text(message: Message):
     """Обработчик текстовых сообщений"""
     try:

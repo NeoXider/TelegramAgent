@@ -11,7 +11,7 @@ class BaseAgent:
     
     def __init__(self, config: Dict[str, Any], model_name: Optional[str] = None):
         """Инициализация базового агента"""
-        self.model_name = model_name or config.get('models', {}).get('default', 'gemma3:12b')
+        self.model_name = model_name or config.get('models', {}).get('default', 'gemma3:latest')
         self.config = config
         self.ollama_client = OllamaClient()
         self.memory: Dict[int, List[Dict[str, str]]] = {}

@@ -30,7 +30,7 @@ class AgentCoordinator:
         
     def _update_models(self):
         """Обновляет модели у всех агентов"""
-        default_model = self.config.get('models', {}).get('default', 'gemma3:12b')
+        default_model = self.config.get('models', {}).get('default', 'gemma3:latest')
         self.image_agent.model_name = default_model
         self.message_agent.model_name = default_model
         self.think_agent.model_name = default_model
