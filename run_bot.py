@@ -247,6 +247,14 @@ async def handle_text(message: Message):
         if message.text.startswith('/'):
             return
             
+        # Проверяем, является ли сообщение ответом на сообщение бота
+        if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+            # Обрабатываем как обычное сообщение
+            result = await coordinator.process_message(message.text, message.from_user.id, message.message_id)
+            if result.get("action") == "send_message":
+                await message.answer(result["text"])
+            return
+            
         text = message.text.lower()
         # Проверяем наличие ключевых слов для генерации изображения
         if any(keyword in text for keyword in ['нарисуй', 'сгенерируй', 'создай']):
