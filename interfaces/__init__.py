@@ -1,3 +1,0 @@
-"""
-Telegram bot interfaces package
-""" 

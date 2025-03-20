@@ -19,27 +19,29 @@ class DocumentAgent(BaseAgent):
     async def process_document(self, file_id: str, chat_id: int, message_id: int) -> dict:
         """Обработка документа"""
         try:
-            # Проверяем документ
-            if not self._is_document_valid(file_id):
+            # Получаем содержимое документа
+            content = await self.get_file_content(file_id)
+            if not content:
                 return {
                     "action": "send_message",
-                    "text": "Неподдерживаемый формат документа"
+                    "text": "Произошла ошибка: не удалось получить содержимое документа"
                 }
-                
-            # Анализируем документ
-            analysis = await self.analyze_document(file_id, chat_id, message_id)
-            
-            # Если нужна дополнительная информация
-            if analysis.get("needs_additional_info"):
+
+            # Анализируем документ с помощью модели
+            response = await self.think(
+                f"Analyze document content: {content}",
+                chat_id,
+                message_id
+            )
+            if not response or not isinstance(response, dict):
                 return {
-                    "action": "request_info",
-                    "text": analysis.get("additional_info", "Нужна дополнительная информация")
+                    "action": "send_message",
+                    "text": "Произошла ошибка при анализе документа"
                 }
-                
-            return analysis
-            
+            return response
+
         except Exception as e:
-            self.logger.error(f"Ошибка при обработке документа: {str(e)}")
+            self.logger.error(f"Ошибка при обработке документа: {e}")
             return {
                 "action": "send_message",
                 "text": "Произошла ошибка при обработке документа"

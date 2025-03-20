@@ -19,13 +19,22 @@ class BaseAgent:
         self.last_image_analysis: Optional[Dict[str, Any]] = None
         
         # Загружаем настройки персонализации
-        self.bot_name = config['bot']['name']
-        self.personality = config['bot']['personality']
-        self.creator = config['bot']['creator']
+        bot_config = config.get('bot', {})
+        self.bot_name = bot_config.get('name', 'Бот')
+        self.personality = bot_config.get('personality', {
+            'greeting_phrases': ['Привет!', 'Здравствуйте!', 'Добрый день!'],
+            'error_phrases': ['Произошла ошибка', 'Что-то пошло не так'],
+            'capabilities': ['Обработка сообщений', 'Анализ изображений', 'Работа с документами'],
+            'self_description': 'Я бот-ассистент',
+            'about_creator': ['Меня создала команда разработчиков']
+        })
+        self.creator = bot_config.get('creator', {'name': 'Команда разработчиков'})
         self.logger = logging.getLogger(__name__)
         
     def _add_to_memory(self, chat_id: int, role: str, content: str):
-        """Добавляет сообщение в память"""
+        """Добавляет сообщение в память для указанного чата"""
+        if not hasattr(self, 'memory') or self.memory is None:
+            self.memory = {}
         if chat_id not in self.memory:
             self.memory[chat_id] = []
         self.memory[chat_id].append({"role": role, "content": content})
@@ -55,118 +64,119 @@ class BaseAgent:
         return f"{self._get_random_greeting()} {self.bot_name} - дружелюбный бот-помощник, и вот что он умеет:\n\n{capabilities}\n\nПросто напиши {self.bot_name}у сообщение, отправь фотографию или документ! 💫"
         
     async def think(self, message: str, chat_id: int, message_id: int) -> dict:
-        """Анализ сообщения пользователя"""
+        """Обработка сообщения и генерация ответа"""
         try:
-            # Добавляем сообщение в память
-            self._add_to_memory(chat_id, "user", message)
+            # Создаем системный промпт
+            system_prompt = self._create_analysis_prompt(message)
             
-            # Проверяем на ключевые слова в сообщении
-            message_lower = message.lower()
-            
-            # Если спрашивают о создателе
-            if any(word in message_lower for word in ["кто тебя создал", "твой создатель", "кто тебя сделал", "кто создал"]):
-                response = random.choice(self.personality['about_creator'])
-                self._add_to_memory(chat_id, "assistant", response)
-                return {"action": "send_message", "text": response}
-                
-            # Если спрашивают имя
-            if any(word in message_lower for word in ["как тебя зовут", "твоё имя", "как тебя называть", "кто ты"]):
-                greeting = random.choice(self.personality['greeting_phrases'])
-                response = f"{greeting} {self.personality['self_description']}"
-                self._add_to_memory(chat_id, "assistant", response)
-                return {"action": "send_message", "text": response}
-                
-            # Если это приветствие
-            if any(word in message_lower for word in ["привет", "здравствуй", "здравствуйте", "доброе утро", "добрый день", "добрый вечер"]):
-                greeting = random.choice(self.personality['greeting_phrases'])
-                capabilities = "\n".join(self.personality['capabilities'])
-                response = f"{greeting}\n\n{self.personality['self_description']}\n\nВот что {self.bot_name} умеет:\n{capabilities}"
-                self._add_to_memory(chat_id, "assistant", response)
-                return {"action": "send_message", "text": response}
-                
-            # Если спрашивают о возможностях
-            if any(word in message_lower for word in ["что ты умеешь", "что умеешь", "помощь", "возможности"]):
-                capabilities = "\n".join(self.personality['capabilities'])
-                response = f"{self.bot_name} с радостью расскажет о своих возможностях! 🌟\n\n{capabilities}"
-                self._add_to_memory(chat_id, "assistant", response)
-                return {"action": "send_message", "text": response}
-                
-            # Если это запрос на поиск
-            if any(word in message_lower for word in ["найди", "поиск", "ищи", "поищи"]):
-                return {"action": "web_search", "query": message}
-                
-            # Если это запрос на анализ изображения
-            if any(word in message_lower for word in ["фото", "картинк", "изображени", "посмотри"]):
-                return {
-                    "needs_image": True,
-                    "action": "request_image",
-                    "text": f"{self.bot_name} с удовольствием посмотрит на картинку! 🖼️ Отправьте её, пожалуйста! ✨"
-                }
-                
-            # Если это запрос на анализ документа
-            if any(word in message_lower for word in ["документ", "файл", "текст"]):
-                return {
-                    "needs_file": True,
-                    "action": "request_file",
-                    "text": f"{self.bot_name} готов изучить документ! 📄 Отправьте его, пожалуйста! ✨"
-                }
-                
-            # По умолчанию генерируем ответ
-            prompt = self._create_response_prompt(message)
-            response = await self.ollama_client.generate(prompt)
+            # Генерируем ответ
+            response = await self.ollama_client.generate(
+                prompt=system_prompt
+            )
             
             if not response:
-                error_message = random.choice(self.personality['error_phrases'])
-                return {"action": "send_message", "text": error_message}
+                return {
+                    "action": "send_message",
+                    "text": f"Произошла ошибка: {self.bot_name} не смог сгенерировать ответ 😢"
+                }
                 
-            self._add_to_memory(chat_id, "assistant", response)
-            return {"action": "send_message", "text": response}
+            # Если ответ уже является словарем, возвращаем его
+            if isinstance(response, dict):
+                return response
+                
+            # Пробуем распарсить JSON
+            try:
+                return json.loads(response)
+            except json.JSONDecodeError:
+                # Если не получилось распарсить JSON, возвращаем текст как есть
+                return {
+                    "action": "send_message",
+                    "text": response
+                }
             
         except Exception as e:
-            self.logger.error(f"Ошибка при анализе запроса: {str(e)}")
-            error_message = random.choice(self.personality['error_phrases'])
-            return {"action": "send_message", "text": error_message}
+            logger.error(f"Ошибка при генерации ответа: {e}")
+            return {
+                "action": "send_message",
+                "text": f"Произошла ошибка при обработке сообщения 🚫"
+            }
             
     async def analyze_image(self, image_path: str, chat_id: int, message_id: int) -> dict:
         """Анализ изображения"""
         try:
-            prompt = self._create_image_analysis_prompt(image_path)
-            response = await self.ollama_client.generate(prompt)
+            # Создаем системный промпт
+            system_prompt = self._create_image_analysis_prompt(image_path)
+            
+            # Генерируем ответ
+            response = await self.ollama_client.generate(
+                prompt=system_prompt
+            )
+            
             if not response:
                 return {
                     "action": "send_message",
-                    "text": f"{self.bot_name} не смог проанализировать изображение 😢"
+                    "text": f"Произошла ошибка: {self.bot_name} не смог проанализировать изображение 😢"
                 }
-            return {
-                "action": "send_message",
-                "text": response
-            }
+                
+            # Если ответ уже является словарем, возвращаем его
+            if isinstance(response, dict):
+                return response
+                
+            # Пробуем распарсить JSON
+            try:
+                return json.loads(response)
+            except json.JSONDecodeError:
+                # Если не получилось распарсить JSON, возвращаем текст как есть
+                return {
+                    "action": "send_message",
+                    "text": response
+                }
+            
         except Exception as e:
-            self.logger.error(f"Ошибка при анализе изображения: {str(e)}")
+            logger.error(f"Ошибка при анализе изображения: {e}")
             return {
                 "action": "send_message",
-                "text": self._get_random_error()
+                "text": f"Произошла ошибка при анализе изображения 🚫"
             }
             
-    async def get_response(self, message: str, chat_id: int, message_id: int) -> dict:
-        """Генерация ответа на сообщение"""
+    async def get_response(self, message: str, chat_id: int, user_id: int) -> dict:
+        """Получение ответа от модели"""
         try:
-            prompt = self._create_response_prompt(message)
-            response = await self.ollama_client.generate(prompt)
+            # Создаем системный промпт
+            system_prompt = self._create_response_prompt(message)
+            
+            # Генерируем ответ
+            response = await self.ollama_client.generate(
+                prompt=system_prompt
+            )
+            
             if not response:
                 return {
                     "action": "send_message",
                     "text": f"{self.bot_name} не смог сгенерировать ответ 😢"
                 }
+            
+            # Если ответ уже является словарем, проверяем наличие текста
+            if isinstance(response, dict):
+                if "text" in response:
+                    return response
+                else:
+                    return {
+                        "action": "send_message",
+                        "text": str(response)
+                    }
+            
+            # Если получили строку, возвращаем её как текст
             return {
                 "action": "send_message",
-                "text": response
+                "text": str(response)
             }
+            
         except Exception as e:
-            self.logger.error(f"Ошибка при генерации ответа: {str(e)}")
+            logger.error(f"Ошибка при генерации ответа: {e}")
             return {
                 "action": "send_message",
-                "text": self._get_random_error()
+                "text": f"{self.bot_name} столкнулся с ошибкой при обработке сообщения 😔"
             }
             
     def is_private_chat(self, chat_id: int) -> bool:
@@ -243,15 +253,40 @@ class BaseAgent:
         )
         
         # Добавляем историю диалога
-        chat_id = 0  # Используем дефолтный chat_id для примера
-        if chat_id in self.memory:
+        if self.memory.get(0):  # Используем дефолтный chat_id для примера
             history = "\n".join([
                 f"{'Пользователь' if msg['role'] == 'user' else 'Слайм'}: {msg['content']}"
-                for msg in self.memory[chat_id][-5:]  # Последние 5 сообщений
+                for msg in self.memory[0][-5:]  # Последние 5 сообщений
             ])
             system_prompt += f"{history}\n"
             
-        system_prompt += f"\nТЕКУЩЕЕ СООБЩЕНИЕ:\n{message}\n"
-        system_prompt += "\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ!"
+        system_prompt += (
+            f"\nТЕКУЩЕЕ СООБЩЕНИЕ:\n{message}\n"
+            "\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ!\n"
+            "ВСЕГДА говори от третьего лица, используя имя 'Слайм'!\n"
+            "Используй эмодзи в каждом предложении! 🌟"
+        )
         
-        return system_prompt 
+        return system_prompt
+
+    async def get_file_content(self, file_id: str) -> Optional[str]:
+        """Получение содержимого файла по его ID"""
+        try:
+            if not file_id:
+                self.logger.error("Получен пустой file_id")
+                return None
+                
+            # В реальном боте здесь будет код для получения файла через Telegram API
+            # В тестах этот метод будет замокан
+            self.logger.info(f"Получение содержимого файла с ID: {file_id}")
+            return f"Content of file {file_id}"
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении содержимого файла: {e}")
+            return None 
+
+    def get_memory_context(self, chat_id: int = 0) -> str:
+        """Возвращает контекст сообщений из памяти для заданного чата"""
+        if chat_id not in self.memory:
+            return ""
+        return "\n".join(f"{msg['role']}: {msg['content']}" for msg in self.memory[chat_id]) 

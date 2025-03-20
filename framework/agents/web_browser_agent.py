@@ -5,9 +5,12 @@ from bs4 import BeautifulSoup
 from .base import BaseAgent
 import os
 from urllib.parse import urlparse, urljoin
+import json
+
+logger = logging.getLogger(__name__)
 
 class WebBrowserAgent(BaseAgent):
-    """Agent for browsing websites and extracting content"""
+    """Агент для работы с веб-страницами"""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -18,100 +21,49 @@ class WebBrowserAgent(BaseAgent):
         self.screenshot_dir = os.path.join('data', 'temp', 'screenshots')
         os.makedirs(self.screenshot_dir, exist_ok=True)
     
-    async def visit_url(self, url: str, extract_images: bool = True) -> Dict[str, Any]:
-        """
-        Visit a URL and extract content
-        
-        Args:
-            url: URL to visit
-            extract_images: Whether to download images
-            
-        Returns:
-            Dictionary containing page content and metadata
-        """
+    async def visit_url(self, url: str, with_images: bool = True) -> Dict[str, Any]:
+        """Получение содержимого веб-страницы"""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=self.headers) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
-                        
-                        # Extract title
-                        title = soup.title.string if soup.title else ''
-                        
-                        # Extract main content
-                        content = ''
-                        for p in soup.find_all('p'):
-                            content += p.get_text() + '\n'
-                        
-                        # Extract images if requested
-                        images = []
-                        if extract_images:
-                            for img in soup.find_all('img'):
-                                img_url = img.get('src')
-                                if img_url:
-                                    if os.path.exists(img_url):  # Локальный файл
-                                        images.append(img_url)
-                                    elif not img_url.startswith(('http://', 'https://')):
-                                        img_url = urljoin(url, img_url)
-                                        images.append(img_url)
-                                    else:
-                                        images.append(img_url)
-                        
-                        return {
-                            'status': 'success',
-                            'title': title,
-                            'content': content.strip(),
-                            'images': images,
-                            'url': url
-                        }
-                    else:
-                        return {
-                            'status': 'error',
-                            'message': f"Failed to load page: {response.status}"
-                        }
-                        
+                    html = await response.text()
+            soup = BeautifulSoup(html, "html.parser")
+            title = soup.title.string if soup.title else ""
+            content = soup.get_text(separator="\n")
+            return {"title": title, "content": content}
         except Exception as e:
-            self.logger.error(f"Error visiting URL: {str(e)}")
-            return {
-                'status': 'error',
-                'message': f"Error visiting URL: {str(e)}"
-            }
+            logger.error(f"Ошибка при получении страницы: {e}")
+            raise
     
-    async def process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Process incoming message and visit URL"""
+    async def process_message(self, message: str, chat_id: int = None, message_id: int = None) -> dict:
+        """Обработка сообщения"""
         try:
-            url = message.get('text', '')
-            if not url:
+            # Проверяем, является ли сообщение URL
+            if not message.startswith(('http://', 'https://')):
                 return {
-                    'status': 'error',
-                    'message': 'No URL provided'
+                    "action": "send_message",
+                    "text": "Пожалуйста, отправьте корректный URL"
                 }
-            
-            if not url.startswith(('http://', 'https://')):
-                url = 'https://' + url
-            
-            result = await self.visit_url(url)
-            
-            if result['status'] == 'error':
-                return result
-            
-            # Format response
-            response_text = f"Title: {result['title']}\n\n"
-            response_text += f"Content:\n{result['content'][:1000]}...\n\n"
-            
-            if result['images']:
-                response_text += f"Found {len(result['images'])} images on the page.\n"
-            
-            return {
-                'status': 'success',
-                'message': response_text,
-                'data': result
-            }
-            
+
+            # Получаем содержимое страницы
+            page_content = await self.visit_url(message, True)
+            if not page_content:
+                return {
+                    "action": "send_message",
+                    "text": "Не удалось получить содержимое страницы"
+                }
+
+            # Анализируем содержимое с помощью модели
+            response = await self.think(
+                f"Analyze webpage content: {json.dumps(page_content)}",
+                chat_id,
+                message_id
+            )
+            return response
+
         except Exception as e:
-            self.logger.error(f"Error processing message: {str(e)}")
+            logger.error(f"Ошибка при обработке URL: {e}")
             return {
-                'status': 'error',
-                'message': f"Error processing URL: {str(e)}"
+                "action": "send_message",
+                "text": "Произошла ошибка при обработке страницы"
             } 

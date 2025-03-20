@@ -3,9 +3,12 @@ from typing import Dict, Any, List
 import aiohttp
 from bs4 import BeautifulSoup
 from .base import BaseAgent
+import json
+
+logger = logging.getLogger(__name__)
 
 class WebSearchAgent(BaseAgent):
-    """Agent for performing web searches"""
+    """Агент для веб-поиска"""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -15,90 +18,52 @@ class WebSearchAgent(BaseAgent):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
     
-    async def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
-        """
-        Perform a web search and return results
-        
-        Args:
-            query: Search query
-            max_results: Maximum number of results to return
-            
-        Returns:
-            List of dictionaries containing search results
-        """
+    async def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Выполнение поискового запроса"""
         try:
             async with aiohttp.ClientSession() as session:
-                params = {
-                    'q': query,
-                    'num': max_results
-                }
-                async with session.get(self.search_engine, params=params, headers=self.headers) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
-                        results = []
-                        
-                        # Extract search results
-                        for result in soup.select('div.g'):
-                            title_elem = result.select_one('h3')
-                            link_elem = result.select_one('a')
-                            snippet_elem = result.select_one('div.VwiC3b')
-                            
-                            if title_elem and link_elem:
-                                results.append({
-                                    'title': title_elem.get_text(),
-                                    'url': link_elem.get('href'),
-                                    'snippet': snippet_elem.get_text() if snippet_elem else ''
-                                })
-                        
-                        return results[:max_results]
-                    else:
-                        self.logger.error(f"Search failed with status code: {response.status}")
-                        return []
-                        
+                params = {'q': query}
+                async with session.get(self.search_engine, headers=self.headers, params=params) as response:
+                    html = await response.text()
+            soup = BeautifulSoup(html, 'html.parser')
+            results = []
+            # Пробуем найти ссылки выдачи
+            for a in soup.find_all('a', href=True):
+                href = a['href']
+                if href.startswith('/url?q='):
+                    actual_url = href.split('/url?q=')[1].split('&')[0]
+                    title = a.get_text().strip()
+                    if title and actual_url:
+                        results.append({"title": title, "url": actual_url})
+                if len(results) >= limit:
+                    break
+            return results
         except Exception as e:
-            self.logger.error(f"Error performing web search: {str(e)}")
+            logger.error(f"Ошибка при поиске: {e}")
             raise
     
-    async def process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Process incoming message and perform search"""
+    async def process_message(self, message: str, chat_id: int = None, message_id: int = None) -> dict:
+        """Обработка поискового запроса"""
         try:
-            query = message.get('text', '')
-            if not query:
+            # Выполняем поиск
+            search_results = await self.search(message, 5)
+            if not search_results:
                 return {
-                    'status': 'error',
-                    'message': 'No search query provided'
+                    "action": "send_message",
+                    "text": "По вашему запросу ничего не найдено"
                 }
-            
-            try:
-                results = await self.search(query)
-            except Exception as e:
-                return {
-                    'status': 'error',
-                    'message': f"Error processing search: {str(e)}"
-                }
-            
-            if not results:
-                return {
-                    'status': 'error',
-                    'message': 'No results found'
-                }
-            
-            # Format results for response
-            response_text = "Search Results:\n\n"
-            for i, result in enumerate(results, 1):
-                response_text += f"{i}. {result['title']}\n"
-                response_text += f"   {result['url']}\n"
-                response_text += f"   {result['snippet']}\n\n"
-            
-            return {
-                'status': 'success',
-                'message': response_text
-            }
-            
+
+            # Анализируем результаты с помощью модели
+            response = await self.think(
+                f"Analyze search results: {json.dumps(search_results)}",
+                chat_id,
+                message_id
+            )
+            return response
+
         except Exception as e:
-            self.logger.error(f"Error processing message: {str(e)}")
+            logger.error(f"Ошибка при выполнении поиска: {e}")
             return {
-                'status': 'error',
-                'message': f"Error processing search: {str(e)}"
+                "action": "send_message",
+                "text": "Произошла ошибка при выполнении поиска"
             } 

@@ -108,5 +108,10 @@
             "search_timeout": 30,
             "browser_timeout": 60
         }
+    },
+    "queue": {
+        "max_queue_size": 5,
+        "task_timeout": 30,
+        "max_retries": 3
     }
 } 
