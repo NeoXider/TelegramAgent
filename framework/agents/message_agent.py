@@ -40,9 +40,13 @@ class MessageAgent(BaseAgent):
                 stream=False
             )
             
-            if not response or not response.get('response'):
+            if not response:
                 self.logger.error("Пустой ответ от модели")
                 return "Извините, я не смог обработать ваше сообщение. Попробуйте еще раз."
+                
+            if not isinstance(response, dict) or 'response' not in response:
+                self.logger.error(f"Некорректный формат ответа от модели: {response}")
+                return "Извините, произошла ошибка при обработке ответа. Попробуйте еще раз."
                 
             return response['response'].strip()
             
@@ -54,14 +58,25 @@ class MessageAgent(BaseAgent):
         """Получает ответ от модели"""
         try:
             # Генерируем ответ
-            response = await self.ollama_client.generate(message)
+            response = await self.ollama_client.generate(
+                model=self.model_name,
+                prompt=message,
+                stream=False
+            )
+            
             if not response:
-                raise ValueError("Пустой ответ от модели")
-            return response
+                self.logger.error("Пустой ответ от модели")
+                return "Извините, я не смог обработать ваше сообщение. Попробуйте еще раз."
+                
+            if not isinstance(response, dict) or 'response' not in response:
+                self.logger.error(f"Некорректный формат ответа от модели: {response}")
+                return "Извините, произошла ошибка при обработке ответа. Попробуйте еще раз."
+                
+            return response['response'].strip()
             
         except Exception as e:
-            self.logger.error(f"Ошибка при генерации ответа: {str(e)}")
-            raise
+            self.logger.error(f"Ошибка при генерации ответа: {str(e)}", exc_info=True)
+            return "Извините, произошла ошибка при обработке сообщения. Попробуйте еще раз."
         
     def is_bot_mentioned(self, message: str) -> bool:
         """Проверка, упомянут ли бот в сообщении"""

@@ -67,7 +67,7 @@ class StableDiffusionHandler:
                     self.pipe = StableDiffusionPipeline.from_single_file(
                         model_path,
                         torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                        safety_checker=None,
+                        safety_checker=None,  # Отключаем проверку безопасности
                         scheduler=scheduler,
                         local_files_only=True
                     )
@@ -80,23 +80,14 @@ class StableDiffusionHandler:
                     self.pipe = StableDiffusionPipeline.from_pretrained(
                         self.model_id,
                         torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                        safety_checker=None,
+                        safety_checker=None,  # Отключаем проверку безопасности
                         scheduler=scheduler,
                         local_files_only=False
                     )
                 
-                # Load the safety checker separately
-                from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-                safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-                    "CompVis/stable-diffusion-safety-checker",
-                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
-                )
-                safety_checker.to(self.device)
-                self.pipe.safety_checker = safety_checker
-                
                 self.pipe.to(self.device)
                 self.is_loaded = True
-                logger.info("Model and safety checker loaded successfully")
+                logger.info("Model loaded successfully")
             except Exception as e:
                 logger.error(f"Error loading model: {str(e)}")
                 raise
