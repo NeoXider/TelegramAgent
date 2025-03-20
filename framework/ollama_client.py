@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Optional, Dict
+from typing import AsyncGenerator, Optional, Dict, Any
 import subprocess
 import time
 
@@ -215,6 +215,36 @@ class OllamaClient:
                         
         except Exception as e:
             logger.error(f"Ошибка при генерации ответа: {str(e)}")
+            logger.error(f"Тип ошибки: {type(e)}")
+            logger.error(f"Аргументы ошибки: {e.args}")
+            raise
+
+    async def list_models(self) -> Dict[str, Any]:
+        """Получает список доступных моделей через Ollama API"""
+        try:
+            # Проверяем доступность сервера
+            if not await self.check_server():
+                raise RuntimeError("Ollama сервер недоступен. Убедитесь, что он запущен.")
+                
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/api/tags",
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Ошибка API при получении списка моделей: {response.status}")
+                        logger.error(f"Ответ: {error_text}")
+                        raise RuntimeError(f"Ошибка API: {error_text}")
+                    
+                    response_data = await response.json()
+                    if "models" not in response_data:
+                        raise ValueError("Неверный формат ответа: отсутствует поле models")
+                    
+                    return response_data["models"]
+                    
+        except Exception as e:
+            logger.error(f"Ошибка при получении списка моделей: {str(e)}")
             logger.error(f"Тип ошибки: {type(e)}")
             logger.error(f"Аргументы ошибки: {e.args}")
             raise
