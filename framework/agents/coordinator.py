@@ -11,6 +11,8 @@ from aiogram.types import FSInputFile
 from io import BytesIO
 from aiogram.types import BufferedInputFile
 import os
+from framework.agents.base import BaseAgent
+from framework.agents.prompt_agent import PromptAgent
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +22,6 @@ class AgentCoordinator:
     def __init__(self, config: Dict[str, Any], bot: Optional[Bot] = None):
         self.config = config
         self.bot = bot
-        self.image_agent = ImageAgent(config)
-        self.message_agent = MessageAgent(config)
-        self.think_agent = ThinkAgent(config)
         self.logger = logging.getLogger(__name__)
         self.response_callbacks = []
         
@@ -30,16 +29,21 @@ class AgentCoordinator:
         from framework.ollama_client import ollama_client
         self.ollama_client = ollama_client
         
-        # Инициализируем генератор изображений
+        # Инициализируем всех агентов
+        self.message_agent = MessageAgent(self.config)
+        self.image_agent = ImageAgent(self.config)
         self.image_generator = StableDiffusionHandler()
+        self.think_agent = ThinkAgent(self.config)
+        self.prompt_agent = PromptAgent(self.config, self.ollama_client)
         
         # Устанавливаем модели из конфига
         self._update_models()
         
+        self._initialize_agents()
+        
     def _update_models(self):
         """Обновляет модели у всех агентов"""
         default_model = self.config.get('models', {}).get('default', 'gemma3:latest')
-        self.image_agent.model_name = default_model
         self.message_agent.model_name = default_model
         self.think_agent.model_name = default_model
         
@@ -70,6 +74,7 @@ class AgentCoordinator:
                 'user_id': user_id
             }
             
+            # Обрабатываем изображение через ImageAgent
             image_result = await self.image_agent.process_image(
                 image_content=image_content,
                 user_id=user_id,
@@ -165,61 +170,50 @@ class AgentCoordinator:
             await self.send_response(user_id, "Ой-ой! 😢 Что-то пошло не так при обработке документа. Давайте попробуем еще раз! 📄")
             return {"action": "send_message", "text": "Ошибка при обработке документа."}
         
-    async def generate_image(self, message: Message, prompt: str, negative_prompt: str = None, width: int = None, height: int = None) -> None:
-        """Generate and send an image based on the prompt."""
+    async def generate_image(self, message: Message, prompt: str) -> None:
+        """Генерирует и отправляет изображение"""
         try:
             # Отправляем сообщение о начале генерации
-            status_message = await self.bot.send_message(
-                chat_id=message.chat.id,
-                text="🎨 Начинаю генерацию изображения... Это может занять некоторое время."
-            )
-
-            # Генерируем изображение
-            image_path = await self.image_generator.generate_image(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                width=width,
-                height=height
-            )
+            status_message = await message.answer("🎨 Генерирую изображение...")
             
-            # Удаляем статусное сообщение
-            try:
+            # Обрабатываем промпт через prompt_agent
+            processed_prompt = await self.prompt_agent.process_prompt(prompt)
+            if not processed_prompt:
                 await status_message.delete()
-            except Exception as e:
-                logger.error(f"Error deleting status message: {str(e)}")
+                await message.answer("Ошибка при обработке описания. Попробуйте еще раз.")
+                return
             
-            if image_path and os.path.exists(image_path):
-                # Отправляем изображение
-                try:
-                    await self.bot.send_photo(
-                        chat_id=message.chat.id,
-                        photo=FSInputFile(image_path),
-                        caption=f"🎨 Сгенерировано по запросу: {prompt}"
-                    )
-                    # Удаляем временный файл после отправки
-                    try:
-                        os.remove(image_path)
-                    except Exception as e:
-                        logger.error(f"Error removing temporary file: {str(e)}")
-                except Exception as e:
-                    logger.error(f"Error sending photo: {str(e)}")
-                    await self.bot.send_message(
-                        chat_id=message.chat.id,
-                        text="Не удалось отправить сгенерированное изображение. Попробуйте еще раз."
-                    )
-            else:
-                await self.bot.send_message(
-                    chat_id=message.chat.id,
-                    text="Не удалось сгенерировать изображение. Попробуйте изменить запрос."
-                )
+            # Генерируем изображение
+            image_path = await self.image_generator.generate_image(processed_prompt)
+            
+            if not image_path or not os.path.exists(image_path):
+                await status_message.delete()
+                await message.answer("Не удалось сгенерировать изображение. Попробуйте еще раз.")
+                return
+                
+            # Удаляем сообщение о генерации
+            await status_message.delete()
+            
+            # Отправляем изображение
+            await message.answer_photo(
+                FSInputFile(image_path),
+                caption=f"🎨 Сгенерировано по запросу: {prompt}"
+            )
+            
+            # Удаляем временный файл
+            try:
+                os.remove(image_path)
+            except Exception as e:
+                self.logger.error(f"Error removing temporary file: {str(e)}")
                 
         except Exception as e:
-            logger.error(f"Error in generate_image: {str(e)}")
-            await self.bot.send_message(
-                chat_id=message.chat.id,
-                text="Произошла ошибка при генерации изображения. Попробуйте позже или измените запрос."
-            )
+            self.logger.error(f"Error in generate_image: {str(e)}")
+            await message.answer("Произошла ошибка при генерации изображения. Попробуйте еще раз.")
         
     async def start(self):
         """Запуск координатора агентов (минимальный)"""
         self.logger.info("Координатор агентов запущен.") 
+
+    def _initialize_agents(self):
+        """Инициализация всех агентов"""
+        pass  # Перенесено в __init__ 

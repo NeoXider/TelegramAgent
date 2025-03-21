@@ -4,12 +4,13 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 from framework.agents.coordinator import AgentCoordinator
-from framework.agents.image_generation_agent import ImageGenerationAgent
 from framework.utils.logger import setup_logger
 from framework.utils.config import load_config
 import os
 from dotenv import load_dotenv
+from framework.utils.prompt_generator import PromptGenerator
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -21,7 +22,10 @@ logger = setup_logger()
 config = load_config()
 
 # Инициализируем бота и диспетчер
-bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
+bot = Bot(
+    token=os.getenv("TELEGRAM_BOT_TOKEN"),
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 dp = Dispatcher()
 
 # Инициализируем координатор агентов
@@ -29,55 +33,57 @@ coordinator = AgentCoordinator(config, bot)
 
 # Регистрируем обработчики команд
 @dp.message(Command("start"))
-async def cmd_start(message: Message):
+async def handle_start(message: Message):
     """Обработчик команды /start"""
     await message.answer(
-        "Привет! Я Слайм, твой дружелюбный помощник! 🎨\n"
-        "Отправь мне изображение или сообщение, и я помогу тебе с ним разобраться! 🌟\n\n"
-        "Доступные команды:\n"
-        "/help - Показать все команды\n"
-        "/models - Показать доступные модели\n"
-        "/setmodel <название> - Установить модель\n"
-        "/current - Показать текущую модель\n"
-        "/generate <описание> - Сгенерировать изображение по описанию"
+        "Привет! 👋 Я бот-ассистент, который может:\n"
+        "1. Отвечать на ваши сообщения\n"
+        "2. Анализировать изображения\n"
+        "3. Генерировать изображения по описанию\n\n"
+        "Просто напишите мне что-нибудь или отправьте изображение!"
     )
 
 @dp.message(Command("help"))
-async def cmd_help(message: Message):
+async def handle_help(message: Message):
     """Обработчик команды /help"""
     await message.answer(
-        "🤖 Команды бота:\n\n"
+        "🤖 Доступные команды:\n\n"
+        "📝 Основные команды:\n"
         "/start - Начать работу с ботом\n"
         "/help - Показать это сообщение\n"
-        "/models - Показать доступные модели\n"
-        "/setmodel <название> - Установить модель\n"
-        "/current - Показать текущую модель\n"
-        "/generate <описание> - Сгенерировать изображение по описанию"
+        "/generate &lt;описание&gt; - Сгенерировать изображение по описанию\n\n"
+        "🔄 Управление моделями:\n"
+        "/models - Показать список доступных моделей\n"
+        "/setmodel &lt;название&gt; - Установить модель по умолчанию\n"
+        "/current - Показать текущую активную модель\n\n"
+        "💡 Примеры запросов:\n"
+        "1. Напиши стихотворение о весне\n"
+        "2. Объясни, как работает фотосинтез\n"
+        "3. Нарисуй красивый закат над горами\n\n"
+        "📸 Работа с изображениями:\n"
+        "• Отправьте изображение для его анализа\n"
+        "• Используйте команду /generate или ключевые слова 'нарисуй', 'сгенерируй', 'создай' для генерации изображений"
     )
 
 @dp.message(Command("generate"))
 async def handle_generate(message: Message):
-    """Handle the /generate command."""
+    """Обработчик команды /generate"""
     try:
-        # Получаем промпт из сообщения
+        # Извлекаем промпт из сообщения
         prompt = message.text.replace("/generate", "").strip()
         
         if not prompt:
             await message.answer(
-                "Пожалуйста, укажите описание изображения после команды /generate\n"
+                "Пожалуйста, добавьте описание того, что нужно нарисовать.\n"
                 "Например: /generate красивый закат над горами"
             )
             return
-        
-        # Генерируем изображение через координатор
-        await coordinator.generate_image(
-            message=message,
-            prompt=prompt
-        )
+            
+        await coordinator.generate_image(message, prompt)
         
     except Exception as e:
         logger.error(f"Error in handle_generate: {str(e)}")
-        await message.answer("Произошла ошибка при обработке команды. Попробуйте позже.")
+        await message.answer("Произошла ошибка при генерации изображения. Попробуйте еще раз.")
 
 @dp.message(Command("models"))
 async def cmd_models(message: Message):
@@ -192,30 +198,25 @@ async def cmd_current(message: Message):
 async def handle_photo(message: Message):
     """Обработчик фотографий"""
     try:
-        # Получаем фото максимального размера
-        photo = message.photo[-1]
-        file = await bot.get_file(photo.file_id)
+        # Получаем информацию о фото
+        photo = message.photo[-1]  # Берем самое большое фото
+        file_id = photo.file_id
         
-        # Скачиваем фото
-        photo_bytes = await bot.download_file(file.file_path)
+        # Получаем файл
+        file = await bot.get_file(file_id)
+        file_path = file.file_path
         
-        # Обрабатываем фото через координатор
-        result = await coordinator.process_image(
-            image_content=photo_bytes,
-            user_id=message.from_user.id,
-            message_id=message.message_id
-        )
+        # Скачиваем файл
+        file_bytes = await bot.download_file(file_path)
         
-        # Отправляем ответ
-        if result["action"] == "send_message":
+        # Обрабатываем изображение
+        result = await coordinator.process_image(file_bytes, message.from_user.id, message.message_id, message.caption or "")
+        if result.get("action") == "send_message":
             await message.answer(result["text"])
             
     except Exception as e:
-        logger.error(f"Ошибка при обработке фото: {str(e)}", exc_info=True)
-        await message.answer(
-            "Ой-ой! 😢 Что-то пошло не так при обработке фото. "
-            "Попробуй еще раз или отправь другое изображение! 🎨"
-        )
+        logger.error(f"Error in handle_photo: {str(e)}")
+        await message.answer("Произошла ошибка при обработке изображения. Попробуйте еще раз.")
 
 @dp.message(F.document)
 async def handle_document(message: Message):
@@ -255,20 +256,9 @@ async def handle_text(message: Message):
                 await message.answer(result["text"])
             return
             
-        text = message.text.lower()
         # Проверяем наличие ключевых слов для генерации изображения
-        if any(keyword in text for keyword in ['нарисуй', 'сгенерируй', 'создай']):
-            # Извлекаем промпт после ключевого слова
-            prompt = message.text
-            for keyword in ['нарисуй', 'сгенерируй', 'создай']:
-                if keyword in text:
-                    prompt = message.text[message.text.lower().find(keyword) + len(keyword):].strip()
-                    break
-            
-            if not prompt:
-                await message.answer("Пожалуйста, добавьте описание того, что нужно нарисовать. Например: нарисуй красивый закат над горами")
-                return
-                
+        prompt = coordinator.prompt_agent.extract_prompt(message.text)
+        if prompt:
             await coordinator.generate_image(message, prompt)
             return
             
@@ -285,17 +275,12 @@ async def main():
     """Основная функция запуска бота"""
     try:
         logger.info("Запуск бота...")
-        
-        # Загружаем модель генерации изображений при запуске
         logger.info("Загрузка модели генерации изображений...")
         await coordinator.image_generator.load_model()
-        logger.info("Модель генерации изображений загружена")
-        
-        # Запускаем бота
+        logger.info("Бот успешно запущен")
         await dp.start_polling(bot)
-        
     except Exception as e:
-        logger.error(f"Ошибка при запуске бота: {str(e)}", exc_info=True)
+        logger.error(f"Ошибка при запуске бота: {str(e)}")
         raise
     finally:
         await bot.session.close()
