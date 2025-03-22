@@ -113,8 +113,9 @@ class AgentCoordinator:
         """Обработка текстового сообщения"""
         try:
             # Пропускаем обработку, если сообщение уже обработано как изображение
-            if hasattr(self, 'last_processed_message') and self.last_processed_message.get('message_id') == message_id:
-                return {"action": "none"}
+            if hasattr(self, 'last_processed_message') and self.last_processed_message is not None:
+                if self.last_processed_message.get('message_id') == message_id:
+                    return {"action": "none"}
                 
             # Обрабатываем сообщение через ThinkAgent
             think_result = await self.think_agent.think(text)
